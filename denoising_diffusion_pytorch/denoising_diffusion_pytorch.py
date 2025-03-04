@@ -100,11 +100,12 @@ def Downsample(dim, dim_out = None):
         nn.Conv2d(dim * 4, default(dim_out, dim), 1)
     )
 
+# Root Mean Square Normalization
 class RMSNorm(Module):
     def __init__(self, dim):
         super().__init__()
         self.scale = dim ** 0.5
-        self.g = nn.Parameter(torch.ones(1, dim, 1, 1))
+        self.g = nn.Parameter(torch.ones(1, dim, 1, 1)) # g 的作用是对归一化后的特征进行通道级别的自适应缩放
 
     def forward(self, x):
         return F.normalize(x, dim = 1) * self.g * self.scale
@@ -154,15 +155,16 @@ class Block(Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x, scale_shift = None):
-        x = self.proj(x)
-        x = self.norm(x)
+        # x = [bs, dim, size, size]
+        x = self.proj(x) # [bs, dim_out, size, size] 
+        x = self.norm(x) # [bs, dim_out, size, size] 
 
         if exists(scale_shift):
             scale, shift = scale_shift
-            x = x * (scale + 1) + shift
+            x = x * (scale + 1) + shift # [bs, dim_out, size, size] 
 
         x = self.act(x)
-        return self.dropout(x)
+        return self.dropout(x) # [bs, dim_out, size, size] 
 
 class ResnetBlock(Module):
     def __init__(self, dim, dim_out, *, time_emb_dim = None, dropout = 0.):
@@ -181,14 +183,14 @@ class ResnetBlock(Module):
         scale_shift = None
         if exists(self.mlp) and exists(time_emb):
             time_emb = self.mlp(time_emb)
-            time_emb = rearrange(time_emb, 'b c -> b c 1 1')
-            scale_shift = time_emb.chunk(2, dim = 1)
+            time_emb = rearrange(time_emb, 'b c -> b c 1 1') # [bs, dim_out*2] -> [bs, dim_out*2, 1, 1]
+            scale_shift = time_emb.chunk(2, dim = 1) # [2, bs, dim_out, 1, 1]
 
-        h = self.block1(x, scale_shift = scale_shift)
+        h = self.block1(x, scale_shift = scale_shift) # [bs, dim_out, size, size] 
 
-        h = self.block2(h)
+        h = self.block2(h) # [bs, dim_out, size, size] 
 
-        return h + self.res_conv(x)
+        return h + self.res_conv(x) # [bs, dim_out, size, size] 
 
 class LinearAttention(Module):
     def __init__(
