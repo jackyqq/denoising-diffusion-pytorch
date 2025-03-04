@@ -220,22 +220,22 @@ class LinearAttention(Module):
 
         x = self.norm(x)
 
-        qkv = self.to_qkv(x).chunk(3, dim = 1)
-        q, k, v = map(lambda t: rearrange(t, 'b (h c) x y -> b h c (x y)', h = self.heads), qkv)
+        qkv = self.to_qkv(x).chunk(3, dim = 1) # [3, bs, hidden_dim, h, w]
+        q, k, v = map(lambda t: rearrange(t, 'b (h c) x y -> b h c (x y)', h = self.heads), qkv) # qkv = [3, bs, heads, dim_head, h*w]
 
-        mk, mv = map(lambda t: repeat(t, 'h c n -> b h c n', b = b), self.mem_kv)
-        k, v = map(partial(torch.cat, dim = -1), ((mk, k), (mv, v)))
+        mk, mv = map(lambda t: repeat(t, 'h c n -> b h c n', b = b), self.mem_kv) # mk = [bs, heads, dim_head, num_mem_kv]
+        k, v = map(partial(torch.cat, dim = -1), ((mk, k), (mv, v))) # [bs, heads, dim_head, num_mem_kv + h*w] , num_mem_kv + h*w对应序列长度
 
         q = q.softmax(dim = -2)
         k = k.softmax(dim = -1)
 
         q = q * self.scale
 
-        context = torch.einsum('b h d n, b h e n -> b h d e', k, v)
+        context = torch.einsum('b h d n, b h e n -> b h d e', k, v) # k * v^T
 
-        out = torch.einsum('b h d e, b h d n -> b h e n', context, q)
-        out = rearrange(out, 'b h c (x y) -> b (h c) x y', h = self.heads, x = h, y = w)
-        return self.to_out(out)
+        out = torch.einsum('b h d e, b h d n -> b h e n', context, q) # context^T * q
+        out = rearrange(out, 'b h c (x y) -> b (h c) x y', h = self.heads, x = h, y = w) # [bs, hidden_dim, h, w]
+        return self.to_out(out) # [bs, dim, h, w]
 
 class Attention(Module):
     def __init__(
